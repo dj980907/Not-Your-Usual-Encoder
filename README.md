@@ -55,112 +55,31 @@ This program uses mutexes, condition variables to realize proper synchronization
 
 This program takes an optional command-line option -j jobs, which specifies the number of worker threads. (If no such option is provided, it runs sequentially (version 1))
 
-
-## I/O redirection
-Sometimes, a user would read the input to a program from a file rather than the keyboard, or send the output of a program to a file rather than the screen. <br/>
-This shell program redirects the **standard input** (`STDIN`) and the **standard output** (`STDOUT`). <br/>
-For simplicity, tis program does not redirect the **standard error** (`STDERR`).
-
-### Input Redirection
-Input redirection is achieved by a `<` symbol followed by a filename. For Example:
+For example:
 ```
-[nyush]$ cat < input.txt
-```
-If the file does not exist, this program prints the following error message to `STDERR` and prompt for the next command.<br/>
-```
-Error: invalid file
-```
-### Output Redirection
-Output redirection is achieved by `>` or `>>` followed by a filename. For example:
-```
-[nyush]$ ls -l > output.txt
-[nyush]$ ls -l >> output.txt
-```
-If the file does not exist, a new file should be created.<br/>
-If the file already exists, redirecting with `>` overwrites the file (after truncating it), whereas redirecting with `>>` appends to the existing file.
-
-### Pipe
-The user may invoke n programs chained through (n - 1) pipes. <br/>
-Each pipe connects the output of the program immediately before the pipe to the input of the program immediately after the pipe. For Example:
-```
-[nyush]$ cat shell.c | grep main | less
+$ time ./nyuenc file.txt > /dev/null
+real    0m0.527s
+user    0m0.475s
+sys     0m0.233s
+$ time ./nyuenc -j 3 file.txt > /dev/null
+real    0m0.191s
+user    0m0.443s
+sys     0m0.179s
 ```
 
-## Built-in Commands
-There are four built-in commands in this program: `cd`, `jobs`, `fg`, and `exit`. 
+At the beginning of the program, I created a pool of worker threads. The number of threads is specified by the command-line argument -j jobs.
 
-### `cd <dir>`
-This command changes the current working directory of the shell. <br/>
-It takes exactly one argument: the directory, which may be an absolute or relative path. For Example:
-```
-[nyush local]$ cd bin
-[nyush bin]$ █
-```
-If `cd` is called with 0 or 2+ arguments, your shell should print the following error message to `STDERR` and prompt for the next command.
-```
-Error: invalid command
-```
-If the directory does not exist, your shell should print the following error message to `STDERR` and prompt for the next command.
-```
-Error: invalid directory
-```
+The main thread divides the input data logically into fixed-size 4KB (i.e., 4,096-byte) chunks and submit the tasks to the task queue, where each task would encode a chunk. Whenever a worker thread becomes available, it executes the next task in the task queue.
 
-### `jobs`
-This command prints a list of currently suspended jobs to `STDOUT`, one job per line.<br/>
-Each line has the following format: `[index] command`. For example:
-```
-[nyush]$ jobs
-[1] ./hello
-[2] /usr/bin/top -c
-[3] cat > output.txt
-[nyush]$ █
-```
-(If there are no currently suspended jobs, this command doees not print anything.)
+For simplicity, I assumed that the task queue is unbounded.
 
-A job is the whole command, including any arguments and I/O redirections.<br/>
-A job may be suspended by `Ctrl-Z`, the `SIGTSTP` signal, or the `SIGSTOP` signal.<br/>
-This list is sorted by the time each job is suspended (oldest first), and the index starts from 1.
+After submitting all tasks, the main thread collects the results and write them to `STDOUT`. For example, if the previous chunk ends with `aaaaa`, and the next chunk starts with `aaa`, instead of writing `a5a3`, the program writes `a8`.
 
-The `jobs` command takes no arguments. <br/>
-If it is called with any arguments, this program prints the following error message to `STDERR` and prompt for the next command.
-```
-Error: invalid command
-```
+It is important to note that the program synchronizes the threads so that there are no deadlocks or race conditions. 
+Two important things to note:
 
-### `fg <index>`
-This command resumes a job in the foreground.<br/>
-It takes exactly one argument: the job index, which is the number inside the bracket printed by the `jobs` command. For example:
-```
-[nyush]$ jobs
-[1] ./hello
-[2] /usr/bin/top -c
-[3] cat > output.txt
-[nyush]$ fg 2
-```
-The last command would resume `/usr/bin/top -c` in the foreground. <br/>
+- The worker thread waits until there is a task to do.
+- The main thread waits until a task has been completed so that it can collect the result.
 
-If `fg` is called with 0 or 2+ arguments, this program prints the following error message to `STDERR` and prompt for the next command.
-```
-Error: invalid command
-```
-
-If the job `index` does not exist in the list of currently suspended jobs, this program prints the following error message to `STDERR` and prompt for the next command.
-```
-Error: invalid job
-```
-
-### `exit`
-
-This command terminates the shell.<br/>
-However, if there are currently suspended jobs, this program will not terminate. <br/>
-Instead, it prints the following error message to `STDERR` and prompt for the next command.
-```
-Error: there are suspended jobs
-
-```
-The `exit` command takes no arguments. <br/>
-If it is called with any arguments, this program prints the following error message to `STDERR` and prompt for the next command.
-```
-Error: invalid command
-```
-If the `STDIN` of this program is closed (e.g., by pressing `Ctrl-D` at the prompt), this program terminates regardless of whether there are suspended jobs!
+## Testing
+I have example files (file.txt, file1.txt, file2.txt, file3.txt) that can be tested. Feel free to try it!
