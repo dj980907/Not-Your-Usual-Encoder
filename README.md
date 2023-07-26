@@ -1,5 +1,6 @@
 # Not-Your-Usual-Encoder
 
+This program is from CS202 of Prof. Yang Tang @ NYU. <br />
 This is a program that demonstrates my familiarity of multithreaded programming using POSIX threads using C programming language.<br>
 This program implements a thread pool using mutexes and condition variables to parallelize a encoding process. <br/>
 
